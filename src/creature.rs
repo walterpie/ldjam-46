@@ -9,7 +9,13 @@ use crate::mutate::Mutate;
 use crate::nn::{Inputs, Network, Outputs};
 
 pub const DEFAULT_TIMEOUT: f32 = 10.0;
-pub const RAY_COUNT: usize = 3;
+pub const FOV_2: f32 = 165.0;
+pub const RAY_COUNT: usize = 9;
+pub const STARVE: f32 = 15.0;
+pub const FOOD: f32 = 2.5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Food;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {

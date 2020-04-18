@@ -28,6 +28,7 @@ pub const HEIGHT: f32 = 720.0 * DPI_FACTOR;
 pub const RADIUS: f32 = 16.0;
 pub const SPEED: f32 = 32.0;
 pub const CREATURE_COUNT: usize = 20;
+pub const FOOD_COUNT: usize = 5;
 
 enum State {
     Game,
@@ -35,20 +36,38 @@ enum State {
 
 struct GameState {
     data: GameData,
+    foods: Vec<Entity>,
     creatures: Vec<Entity>,
 }
 
 impl GameState {
     pub fn new(ctx: &mut Context) -> GameResult<GameState> {
         let mut data = GameData::new();
+        let mut foods = Vec::new();
         let mut creatures = Vec::new();
-        for _ in 0..CREATURE_COUNT {
+        for _ in 0..FOOD_COUNT {
             let e = data.add_entity();
             let radius = random::<f32>() * RADIUS * DPI_FACTOR;
             let color = Color::new(random::<f32>(), random::<f32>(), random::<f32>(), 1.0);
+            data.insert(e, Food);
+            data.insert(
+                e,
+                Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
+            );
+            data.insert(e, Velocity::new(0.0, 0.0));
+            data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
+            data.insert(e, Draw::circle(ctx, radius, color)?);
+            foods.push(e)
+        }
+        for _ in 0..CREATURE_COUNT {
+            let e = data.add_entity();
+            let radius = random::<f32>() * RADIUS * DPI_FACTOR;
+            let color;
             let kind = if random::<bool>() {
+                color = Color::new(0.0, random::<f32>(), random::<f32>(), 1.0);
                 Kind::Vegan
             } else {
+                color = Color::new(random::<f32>(), 0.0, random::<f32>(), 1.0);
                 Kind::Carnivorous
             };
             data.insert(e, Creature::new(kind));
@@ -66,7 +85,11 @@ impl GameState {
             creatures.push(e)
         }
 
-        Ok(GameState { data, creatures })
+        Ok(GameState {
+            data,
+            foods,
+            creatures,
+        })
     }
 }
 
@@ -76,16 +99,43 @@ impl EventHandler for GameState {
         let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
         for e in self.creatures.iter().copied() {
             self.data[e.component::<Creature>()].timeout -= delta;
+            self.data[e.component::<Creature>()].hunger += delta;
+            if self.data[e.component::<Creature>()].hunger > STARVE {
+                self.data.delete(e);
+                self.data.lazy.remove(e);
+            }
+        }
+
+        let (_, remove) = self.data.commit();
+        for r in remove {
+            let pos = self.creatures.iter().position(|e| *e == r);
+            if let Some(pos) = pos {
+                self.creatures.remove(pos);
+                continue;
+            }
         }
 
         collision::physics_system(
             ctx,
             &mut self.data,
-            self.creatures.iter().copied(),
-            self.creatures.iter().copied(),
+            self.creatures.iter().chain(&self.foods).copied(),
+            self.creatures.iter().chain(&self.foods).copied(),
         )?;
 
-        self.creatures.extend(self.data.commit());
+        let (add, remove) = self.data.commit();
+        for r in remove {
+            let pos = self.creatures.iter().position(|e| *e == r);
+            if let Some(pos) = pos {
+                self.creatures.remove(pos);
+                continue;
+            }
+            let pos = self.foods.iter().position(|e| *e == r);
+            if let Some(pos) = pos {
+                self.foods.remove(pos);
+                continue;
+            }
+        }
+        self.creatures.extend(add);
 
         collision::input_system(&mut self.data, self.creatures.iter().copied())?;
         nn::nn_system(&mut self.data, self.creatures.iter().copied())?;
@@ -97,6 +147,7 @@ impl EventHandler for GameState {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, graphics::BLACK);
 
+        draw::draw_system(ctx, &self.data, self.foods.iter().copied())?;
         draw::draw_system(ctx, &self.data, self.creatures.iter().copied())?;
 
         graphics::present(ctx)?;

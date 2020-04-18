@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
@@ -7,6 +8,10 @@ use crate::draw::*;
 use crate::lazy::*;
 use crate::nn::{Inputs, Network, Outputs};
 
+pub trait Has<T> {
+    fn has(&self, c: Component<T>) -> bool;
+}
+
 pub trait Insert<T> {
     fn insert(&mut self, e: Entity, t: T);
 }
@@ -15,7 +20,9 @@ pub trait Insert<T> {
 #[derive(Debug, PartialEq)]
 pub struct GameData {
     entity: usize,
+    delete: HashSet<Entity>,
     creatures: Vec<Option<Creature>>,
+    foods: Vec<Option<Food>>,
     positions: Vec<Option<Position>>,
     velocities: Vec<Option<Velocity>>,
     directions: Vec<Option<Direction>>,
@@ -31,7 +38,9 @@ impl GameData {
     pub fn new() -> Self {
         Self {
             entity: 0,
+            delete: HashSet::new(),
             creatures: Vec::new(),
+            foods: Vec::new(),
             positions: Vec::new(),
             velocities: Vec::new(),
             directions: Vec::new(),
@@ -46,6 +55,7 @@ impl GameData {
 
     pub fn add_entity(&mut self) -> Entity {
         self.creatures.push(None);
+        self.foods.push(None);
         self.positions.push(None);
         self.velocities.push(None);
         self.directions.push(None);
@@ -60,14 +70,22 @@ impl GameData {
         e
     }
 
-    pub fn commit(&mut self) -> Vec<Entity> {
+    /// This does not immediately remove the entity, it only marks it for
+    /// deletion
+    pub fn delete(&mut self, e: Entity) {
+        self.delete.insert(e);
+    }
+
+    pub fn commit(&mut self) -> (Vec<Entity>, Vec<Entity>) {
         let delta = self.lazy.entity;
+        let mut remove = Vec::new();
         let result = (self.entity..self.entity + delta)
             .map(|idx| Entity { idx })
             .collect();
         self.entity += self.lazy.entity;
         self.lazy.entity = 0;
         self.creatures.extend(self.lazy.creatures.drain(..));
+        self.foods.extend(self.lazy.foods.drain(..));
         self.positions.extend(self.lazy.positions.drain(..));
         self.velocities.extend(self.lazy.velocities.drain(..));
         self.directions.extend(self.lazy.directions.drain(..));
@@ -76,7 +94,20 @@ impl GameData {
         self.nns.extend(self.lazy.nns.drain(..));
         self.inputs.extend(self.lazy.inputs.drain(..));
         self.outputs.extend(self.lazy.outputs.drain(..));
-        result
+        for e in self.lazy.remove.drain(..) {
+            self.creatures[e.idx] = None;
+            self.foods[e.idx] = None;
+            self.positions[e.idx] = None;
+            self.velocities[e.idx] = None;
+            self.directions[e.idx] = None;
+            self.bodies[e.idx] = None;
+            self.draw[e.idx] = None;
+            self.nns[e.idx] = None;
+            self.inputs[e.idx] = None;
+            self.outputs[e.idx] = None;
+            remove.push(e);
+        }
+        (result, remove)
     }
 }
 
@@ -120,9 +151,53 @@ impl IndexMut<Component<Creature>> for GameData {
     }
 }
 
+impl Has<Creature> for GameData {
+    fn has(&self, c: Component<Creature>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.creatures[c.idx].is_some()
+    }
+}
+
 impl Insert<Creature> for GameData {
     fn insert(&mut self, e: Entity, t: Creature) {
         self.creatures[e.idx] = Some(t);
+    }
+}
+
+impl Index<Component<Food>> for GameData {
+    type Output = Food;
+
+    fn index(&self, idx: Component<Food>) -> &Self::Output {
+        self.foods[idx.idx]
+            .as_ref()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl IndexMut<Component<Food>> for GameData {
+    fn index_mut(&mut self, idx: Component<Food>) -> &mut Self::Output {
+        self.foods[idx.idx]
+            .as_mut()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Food> for GameData {
+    fn has(&self, c: Component<Food>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.foods[c.idx].is_some()
+    }
+}
+
+impl Insert<Food> for GameData {
+    fn insert(&mut self, e: Entity, t: Food) {
+        self.foods[e.idx] = Some(t);
     }
 }
 
@@ -141,6 +216,16 @@ impl IndexMut<Component<Position>> for GameData {
         self.positions[idx.idx]
             .as_mut()
             .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Position> for GameData {
+    fn has(&self, c: Component<Position>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.positions[c.idx].is_some()
     }
 }
 
@@ -168,6 +253,16 @@ impl IndexMut<Component<Velocity>> for GameData {
     }
 }
 
+impl Has<Velocity> for GameData {
+    fn has(&self, c: Component<Velocity>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.velocities[c.idx].is_some()
+    }
+}
+
 impl Insert<Velocity> for GameData {
     fn insert(&mut self, e: Entity, t: Velocity) {
         self.velocities[e.idx] = Some(t);
@@ -189,6 +284,16 @@ impl IndexMut<Component<Direction>> for GameData {
         self.directions[idx.idx]
             .as_mut()
             .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Direction> for GameData {
+    fn has(&self, c: Component<Direction>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.directions[c.idx].is_some()
     }
 }
 
@@ -216,6 +321,16 @@ impl IndexMut<Component<Body>> for GameData {
     }
 }
 
+impl Has<Body> for GameData {
+    fn has(&self, c: Component<Body>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.bodies[c.idx].is_some()
+    }
+}
+
 impl Insert<Body> for GameData {
     fn insert(&mut self, e: Entity, t: Body) {
         self.bodies[e.idx] = Some(t);
@@ -237,6 +352,16 @@ impl IndexMut<Component<Draw>> for GameData {
         self.draw[idx.idx]
             .as_mut()
             .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Draw> for GameData {
+    fn has(&self, c: Component<Draw>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.draw[c.idx].is_some()
     }
 }
 
@@ -264,6 +389,16 @@ impl IndexMut<Component<Network>> for GameData {
     }
 }
 
+impl Has<Network> for GameData {
+    fn has(&self, c: Component<Network>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.nns[c.idx].is_some()
+    }
+}
+
 impl Insert<Network> for GameData {
     fn insert(&mut self, e: Entity, t: Network) {
         self.nns[e.idx] = Some(t);
@@ -288,6 +423,16 @@ impl IndexMut<Component<Inputs>> for GameData {
     }
 }
 
+impl Has<Inputs> for GameData {
+    fn has(&self, c: Component<Inputs>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.inputs[c.idx].is_some()
+    }
+}
+
 impl Insert<Inputs> for GameData {
     fn insert(&mut self, e: Entity, t: Inputs) {
         self.inputs[e.idx] = Some(t);
@@ -309,6 +454,16 @@ impl IndexMut<Component<Outputs>> for GameData {
         self.outputs[idx.idx]
             .as_mut()
             .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Outputs> for GameData {
+    fn has(&self, c: Component<Outputs>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.outputs[c.idx].is_some()
     }
 }
 

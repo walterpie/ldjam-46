@@ -8,7 +8,7 @@ use nalgebra::{DVector, Vector2};
 use ordered_float::OrderedFloat;
 
 use crate::creature::*;
-use crate::data::{Entity, GameData};
+use crate::data::{Entity, GameData, Has};
 use crate::nn::{Inputs, Outputs};
 use crate::{HEIGHT, RADIUS, SPEED, WIDTH};
 
@@ -175,23 +175,58 @@ where
                 continue;
             }
 
+            if !data.has(a.component::<Body>()) || !data.has(b.component::<Body>()) {
+                continue;
+            }
+
             if let Some(m) = gen_manifold(data, a, b) {
                 resolve(data, &m);
                 correct(data, &m);
 
-                let c1 = data[m.a.component::<Creature>()];
-                let c2 = data[m.b.component::<Creature>()];
-                if c1.timeout >= 0.0 || c2.timeout >= 0.0 || c1.kind != c2.kind {
-                    continue;
-                }
+                if data.has(m.a.component::<Creature>()) && data.has(m.b.component::<Creature>()) {
+                    let c1 = data[m.a.component::<Creature>()];
+                    let c2 = data[m.b.component::<Creature>()];
+                    match (c1.kind, c2.kind) {
+                        (Kind::Vegan, Kind::Vegan) => {}
+                        (Kind::Vegan, Kind::Carnivorous) => {
+                            data[m.b.component::<Creature>()].hunger -= FOOD;
+                            data.delete(m.a);
+                            data.lazy.remove(m.a);
+                            continue;
+                        }
+                        (Kind::Carnivorous, Kind::Vegan) => {
+                            data[m.a.component::<Creature>()].hunger -= FOOD;
+                            data.delete(m.b);
+                            data.lazy.remove(m.b);
+                            continue;
+                        }
+                        (Kind::Carnivorous, Kind::Carnivorous) => {}
+                    }
+                    if c1.timeout >= 0.0 || c2.timeout >= 0.0 {
+                        continue;
+                    }
 
-                mate(ctx, data, m.a, m.b)?;
+                    mate(ctx, data, m.a, m.b)?;
+                } else if data.has(m.a.component::<Creature>()) && data.has(m.b.component::<Food>())
+                {
+                    data[m.a.component::<Creature>()].hunger -= FOOD;
+                    data.delete(m.b);
+                    data.lazy.remove(m.b);
+                } else if data.has(m.a.component::<Food>()) && data.has(m.b.component::<Creature>())
+                {
+                    data[m.b.component::<Creature>()].hunger -= FOOD;
+                    data.delete(m.a);
+                    data.lazy.remove(m.a);
+                }
             }
         }
     }
     let delta = timer::delta(ctx);
     let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
     for a in left.clone() {
+        if !data.has(a.component::<Velocity>()) || !data.has(a.component::<Position>()) {
+            continue;
+        }
         let vel = data[a.component::<Velocity>()].velocity;
         let pos = &mut data[a.component::<Position>()].position;
         *pos += vel * delta;
@@ -219,7 +254,7 @@ where
         let mut inputs = vec![1.0; RAY_COUNT * 2];
         for i in 0..RAY_COUNT {
             let f = i as f32 / (RAY_COUNT as f32 - 1.0);
-            let d = -45.0_f32 * f + d + 45.0_f32 * f;
+            let d = -FOV_2 * f + d + FOV_2 * f;
             let (y, x) = d.sin_cos();
             let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
             let ray = Ray { p1, p2 };

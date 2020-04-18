@@ -10,8 +10,10 @@ use crate::nn::{Inputs, Network, Outputs};
 /// A collection of lazily evaluated components
 #[derive(Debug, PartialEq)]
 pub struct LazyUpdate {
+    pub remove: Vec<Entity>,
     pub entity: usize,
     pub creatures: Vec<Option<Creature>>,
+    pub foods: Vec<Option<Food>>,
     pub positions: Vec<Option<Position>>,
     pub velocities: Vec<Option<Velocity>>,
     pub directions: Vec<Option<Direction>>,
@@ -26,7 +28,9 @@ impl LazyUpdate {
     pub fn new() -> Self {
         Self {
             entity: 0,
+            remove: Vec::new(),
             creatures: Vec::new(),
+            foods: Vec::new(),
             positions: Vec::new(),
             velocities: Vec::new(),
             directions: Vec::new(),
@@ -40,6 +44,7 @@ impl LazyUpdate {
 
     pub fn add_entity(&mut self) -> Entity {
         self.creatures.push(None);
+        self.foods.push(None);
         self.positions.push(None);
         self.velocities.push(None);
         self.directions.push(None);
@@ -52,6 +57,10 @@ impl LazyUpdate {
         let e = Entity { idx: self.entity };
         self.entity += 1;
         e
+    }
+
+    pub fn remove(&mut self, e: Entity) {
+        self.remove.push(e);
     }
 }
 
@@ -83,6 +92,30 @@ impl IndexMut<Component<Creature>> for LazyUpdate {
 impl Insert<Creature> for LazyUpdate {
     fn insert(&mut self, e: Entity, t: Creature) {
         self.creatures[e.idx] = Some(t);
+    }
+}
+
+impl Index<Component<Food>> for LazyUpdate {
+    type Output = Food;
+
+    fn index(&self, idx: Component<Food>) -> &Self::Output {
+        self.foods[idx.idx]
+            .as_ref()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl IndexMut<Component<Food>> for LazyUpdate {
+    fn index_mut(&mut self, idx: Component<Food>) -> &mut Self::Output {
+        self.foods[idx.idx]
+            .as_mut()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl Insert<Food> for LazyUpdate {
+    fn insert(&mut self, e: Entity, t: Food) {
+        self.foods[e.idx] = Some(t);
     }
 }
 
