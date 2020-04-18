@@ -2,6 +2,8 @@ use ggez::{Context, GameResult};
 
 use nalgebra::Vector2;
 
+use serde::{Deserialize, Serialize};
+
 use crate::collision::Body;
 use crate::data::{Entity, GameData, Insert};
 use crate::draw::Draw;
@@ -17,7 +19,7 @@ pub const FOOD: f32 = 2.5;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Food;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Kind {
     /// Corresponds to 0.0
     Vegan,
@@ -35,7 +37,7 @@ impl Kind {
 }
 
 /// Should be stored in an array of structs
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Creature {
     /// Can be either vegan or carnivorous
     pub kind: Kind,
@@ -43,6 +45,8 @@ pub struct Creature {
     pub hunger: f32,
     /// If this is below 0.0, the creature can mate
     pub timeout: f32,
+    /// This is the time spent living
+    pub life: f32,
 }
 
 impl Creature {
@@ -51,6 +55,7 @@ impl Creature {
             kind,
             hunger: 0.0,
             timeout: DEFAULT_TIMEOUT,
+            life: 0.0,
         }
     }
 }

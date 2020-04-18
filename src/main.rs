@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::Path;
 use std::process;
 
 use ggez::conf::WindowMode;
@@ -59,7 +61,42 @@ impl GameState {
             data.insert(e, Draw::circle(ctx, radius, color)?);
             foods.push(e)
         }
-        for _ in 0..CREATURE_COUNT {
+
+        let mut new_count = CREATURE_COUNT;
+
+        let path: &Path = "alive.bin".as_ref();
+        if path.exists() {
+            let encoded = fs::read("alive.bin").expect("couldn't load top 20 from `alive.bin`");
+            let top: Vec<(Creature, Network)> =
+                bincode::deserialize(&encoded).expect("couldn't deserialize top 20");
+
+            new_count -= top.len();
+
+            for (creature, network) in top {
+                let e = data.add_entity();
+                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
+                let color = if creature.kind == Kind::Vegan {
+                    Color::new(0.0, random::<f32>(), random::<f32>(), 1.0)
+                } else {
+                    Color::new(random::<f32>(), 0.0, random::<f32>(), 1.0)
+                };
+                data.insert(e, creature);
+                data.insert(
+                    e,
+                    Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
+                );
+                data.insert(e, Velocity::new(0.0, 0.0));
+                data.insert(e, Direction::new(0.0));
+                data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
+                data.insert(e, Draw::circle(ctx, radius, color)?);
+                data.insert(e, network);
+                data.insert(e, Inputs::new(RAY_COUNT * 2));
+                data.insert(e, Outputs::new(8));
+                creatures.push(e)
+            }
+        }
+
+        for _ in 0..new_count {
             let e = data.add_entity();
             let radius = random::<f32>() * RADIUS * DPI_FACTOR;
             let color;
@@ -99,6 +136,7 @@ impl EventHandler for GameState {
         let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
         for e in self.creatures.iter().copied() {
             self.data[e.component::<Creature>()].timeout -= delta;
+            self.data[e.component::<Creature>()].life += delta;
             self.data[e.component::<Creature>()].hunger += delta;
             if self.data[e.component::<Creature>()].hunger > STARVE {
                 self.data.delete(e);
@@ -153,6 +191,28 @@ impl EventHandler for GameState {
         graphics::present(ctx)?;
         Ok(())
     }
+
+    fn quit_event(&mut self, _ctx: &mut Context) -> bool {
+        // filler
+        let mut top = vec![(Creature::new(Kind::Vegan), Network::new(&[1])); CREATURE_COUNT];
+        for e in self.creatures.iter().copied() {
+            for top in top.iter_mut() {
+                if self.data[e.component::<Creature>()].life > top.0.life {
+                    *top = (
+                        self.data[e.component::<Creature>()],
+                        self.data[e.component::<Network>()].clone(),
+                    );
+                    break;
+                }
+            }
+        }
+
+        let encoded: Vec<u8> = bincode::serialize(&top).expect("couldn't serialize top 20");
+
+        fs::write("alive.bin", &encoded).expect("couldn't save top 20 to `alive.bin`");
+
+        false
+    }
 }
 
 struct Game {
@@ -179,6 +239,12 @@ impl EventHandler for Game {
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         match self.state {
             State::Game => self.game.draw(ctx),
+        }
+    }
+
+    fn quit_event(&mut self, ctx: &mut Context) -> bool {
+        match self.state {
+            State::Game => self.game.quit_event(ctx),
         }
     }
 }

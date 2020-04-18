@@ -2,6 +2,8 @@ use ggez::GameResult;
 
 use nalgebra::{DMatrix, DVector};
 
+use serde::{Deserialize, Serialize};
+
 use crate::data::{Entity, GameData};
 
 fn sigmoid(n: f32) -> f32 {
@@ -55,7 +57,7 @@ impl Outputs {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Network {
     weights: Vec<DMatrix<f32>>,
     biases: Vec<DVector<f32>>,
