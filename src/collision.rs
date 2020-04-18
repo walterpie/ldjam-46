@@ -1,12 +1,28 @@
 use std::f32;
 
+use ggez::graphics::Color;
 use ggez::timer;
 use ggez::{Context, GameResult};
 
-use nalgebra::Vector2;
+use nalgebra::{DVector, Vector2};
+
+use ordered_float::OrderedFloat;
+
+use rand::random;
 
 use crate::creature::*;
-use crate::data::{Entity, GameData};
+use crate::data::{Entity, GameData, Insert};
+use crate::draw::Draw;
+use crate::nn::{Inputs, Network, Outputs};
+use crate::{DPI_FACTOR, HEIGHT, RADIUS, SPEED, WIDTH};
+
+pub const VIEW_DISTANCE: f32 = 300.0;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Ray {
+    p1: Vector2<f32>,
+    p2: Vector2<f32>,
+}
 
 /// Should be stored in an array of structs
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -111,6 +127,39 @@ pub fn gen_manifold(data: &mut GameData, a: Entity, b: Entity) -> Option<Manifol
     })
 }
 
+pub fn raycast<I>(data: &GameData, ray: &Ray, entities: I) -> Option<(Entity, f32)>
+where
+    I: IntoIterator<Item = Entity>,
+{
+    let b = ray.p2 - ray.p1;
+    let mut result = None;
+    let mut min_dist = f32::INFINITY;
+    for e in entities {
+        let pos = data[e.component::<Position>()].position;
+        let radius = data[e.component::<Body>()].radius;
+        let a = pos - ray.p1;
+        let dot = a.dot(&b);
+        let len = b.magnitude();
+        let t = dot / len;
+        if t < 0.0 || t >= 1.0 {
+            continue;
+        }
+        let len2 = len * len;
+        let a1 = b * (dot / len2);
+        let a2 = a - a1;
+        if a2.magnitude_squared() > radius * radius {
+            continue;
+        }
+
+        let dist = a1.magnitude();
+        if dist < min_dist {
+            min_dist = dist;
+            result = Some(e);
+        }
+    }
+    result.map(|r| (r, min_dist))
+}
+
 pub fn physics_system<I1, I2>(
     ctx: &mut Context,
     data: &mut GameData,
@@ -126,6 +175,44 @@ where
             if let Some(m) = gen_manifold(data, a, b) {
                 resolve(data, &m);
                 correct(data, &m);
+
+                let c1 = data[m.a.component::<Creature>()];
+                let c2 = data[m.b.component::<Creature>()];
+                if c1.timeout >= 0.0 || c2.timeout >= 0.0 || c1.kind != c2.kind {
+                    continue;
+                }
+
+                data[m.a.component::<Creature>()].timeout = DEFAULT_TIMEOUT;
+                data[m.b.component::<Creature>()].timeout = DEFAULT_TIMEOUT;
+
+                let e = data.lazy.add_entity();
+                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
+                let color = Color::new(
+                    random::<f32>(),
+                    random::<f32>(),
+                    random::<f32>(),
+                    random::<f32>(),
+                );
+                let kind = if random::<bool>() {
+                    Kind::Vegan
+                } else {
+                    Kind::Carnivorous
+                };
+                data.lazy.insert(e, Creature::new(kind));
+                data.lazy.insert(
+                    e,
+                    Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
+                );
+                let vx = random::<f32>() * 2.0 - 1.0;
+                let vy = random::<f32>() * 2.0 - 1.0;
+                data.lazy.insert(e, Velocity::new(vx * SPEED, vy * SPEED));
+                data.lazy.insert(e, Direction::new(random::<f32>()));
+                data.lazy
+                    .insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
+                data.lazy.insert(e, Draw::circle(ctx, radius, color)?);
+                data.lazy.insert(e, Network::new(&[6, 6, 8]));
+                data.lazy.insert(e, Inputs::new(6));
+                data.lazy.insert(e, Outputs::new(8));
             }
         }
     }
@@ -135,6 +222,67 @@ where
         let vel = data[a.component::<Velocity>()].velocity;
         let pos = &mut data[a.component::<Position>()].position;
         *pos += vel * delta;
+    }
+    Ok(())
+}
+
+pub fn input_system<I>(data: &mut GameData, entities: I) -> GameResult<()>
+where
+    I: IntoIterator<Item = Entity> + Clone,
+{
+    for e in entities.clone() {
+        let p1 = data[e.component::<Position>()].position;
+        let d = data[e.component::<Direction>()].direction;
+        let (y, x) = d.sin_cos();
+        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
+        let ray = Ray { p1, p2 };
+        let r1 = raycast(data, &ray, entities.clone());
+        let (y, x) = (d + 45.0_f32.to_radians()).sin_cos();
+        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
+        let ray = Ray { p1, p2 };
+        let r2 = raycast(data, &ray, entities.clone());
+        let (y, x) = (d - 45.0_f32.to_radians()).sin_cos();
+        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
+        let ray = Ray { p1, p2 };
+        let r3 = raycast(data, &ray, entities.clone());
+        let mut inputs = vec![0.0; 6];
+        if let Some((e, d)) = r1 {
+            let kind = data[e.component::<Creature>()].kind;
+            inputs[0] = kind.as_f32();
+            inputs[3] = d / VIEW_DISTANCE;
+        }
+        if let Some((e, d)) = r2 {
+            let kind = data[e.component::<Creature>()].kind;
+            inputs[1] = kind.as_f32();
+            inputs[4] = d / VIEW_DISTANCE;
+        }
+        if let Some((e, d)) = r3 {
+            let kind = data[e.component::<Creature>()].kind;
+            inputs[2] = kind.as_f32();
+            inputs[5] = d / VIEW_DISTANCE;
+        }
+        data[e.component::<Inputs>()].input = DVector::from_vec(inputs);
+    }
+    Ok(())
+}
+
+pub fn output_system<I>(data: &mut GameData, entities: I) -> GameResult<()>
+where
+    I: IntoIterator<Item = Entity> + Clone,
+{
+    for e in entities.clone() {
+        let output = &data[e.component::<Outputs>()].output;
+        let (index, _) = output
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, x)| OrderedFloat::from(**x))
+            .unwrap();
+        let angle = (360.0 / 8.0 * index as f32).to_radians();
+        let (y, x) = angle.sin_cos();
+        let new_velocity = Velocity::new(x * SPEED, y * SPEED);
+        let new_direction = angle;
+        data[e.component::<Velocity>()] = new_velocity;
+        data[e.component::<Direction>()].direction = new_direction;
     }
     Ok(())
 }
