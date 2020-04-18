@@ -25,7 +25,7 @@ pub mod nn;
 pub const DPI_FACTOR: f32 = 1.0 / 3.166;
 pub const WIDTH: f32 = 1280.0 * DPI_FACTOR;
 pub const HEIGHT: f32 = 720.0 * DPI_FACTOR;
-pub const RADIUS: f32 = 64.0;
+pub const RADIUS: f32 = 16.0;
 pub const SPEED: f32 = 32.0;
 pub const CREATURE_COUNT: usize = 20;
 

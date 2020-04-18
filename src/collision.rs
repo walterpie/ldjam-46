@@ -10,7 +10,7 @@ use ordered_float::OrderedFloat;
 use crate::creature::*;
 use crate::data::{Entity, GameData};
 use crate::nn::{Inputs, Outputs};
-use crate::SPEED;
+use crate::{HEIGHT, RADIUS, SPEED, WIDTH};
 
 pub const VIEW_DISTANCE: f32 = 300.0;
 
@@ -168,6 +168,10 @@ where
 {
     for a in left.clone() {
         for b in right.clone() {
+            if a == b {
+                continue;
+            }
+
             if let Some(m) = gen_manifold(data, a, b) {
                 resolve(data, &m);
                 correct(data, &m);
@@ -188,6 +192,16 @@ where
         let vel = data[a.component::<Velocity>()].velocity;
         let pos = &mut data[a.component::<Position>()].position;
         *pos += vel * delta;
+        if pos.x < -RADIUS {
+            pos.x += WIDTH + RADIUS;
+        } else if pos.x > WIDTH + RADIUS {
+            pos.x -= WIDTH + RADIUS;
+        }
+        if pos.y < -RADIUS {
+            pos.y += HEIGHT + RADIUS;
+        } else if pos.y > HEIGHT + RADIUS {
+            pos.y -= HEIGHT + RADIUS;
+        }
     }
     Ok(())
 }
