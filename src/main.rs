@@ -19,6 +19,7 @@ pub mod creature;
 pub mod data;
 pub mod draw;
 pub mod lazy;
+pub mod mutate;
 pub mod nn;
 
 pub const DPI_FACTOR: f32 = 1.0 / 3.166;
@@ -26,7 +27,7 @@ pub const WIDTH: f32 = 1280.0 * DPI_FACTOR;
 pub const HEIGHT: f32 = 720.0 * DPI_FACTOR;
 pub const RADIUS: f32 = 64.0;
 pub const SPEED: f32 = 32.0;
-pub const CREATURE_COUNT: usize = 10;
+pub const CREATURE_COUNT: usize = 20;
 
 enum State {
     Game,
@@ -60,10 +61,8 @@ impl GameState {
                 e,
                 Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
             );
-            let vx = random::<f32>() * 2.0 - 1.0;
-            let vy = random::<f32>() * 2.0 - 1.0;
-            data.insert(e, Velocity::new(vx * SPEED, vy * SPEED));
-            data.insert(e, Direction::new(random::<f32>()));
+            data.insert(e, Velocity::new(0.0, 0.0));
+            data.insert(e, Direction::new(0.0));
             data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
             data.insert(e, Draw::circle(ctx, radius, color)?);
             data.insert(e, Network::new(&[6, 6, 8]));

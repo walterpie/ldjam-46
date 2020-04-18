@@ -1,6 +1,5 @@
 use std::f32;
 
-use ggez::graphics::Color;
 use ggez::timer;
 use ggez::{Context, GameResult};
 
@@ -8,13 +7,10 @@ use nalgebra::{DVector, Vector2};
 
 use ordered_float::OrderedFloat;
 
-use rand::random;
-
 use crate::creature::*;
-use crate::data::{Entity, GameData, Insert};
-use crate::draw::Draw;
-use crate::nn::{Inputs, Network, Outputs};
-use crate::{DPI_FACTOR, HEIGHT, RADIUS, SPEED, WIDTH};
+use crate::data::{Entity, GameData};
+use crate::nn::{Inputs, Outputs};
+use crate::SPEED;
 
 pub const VIEW_DISTANCE: f32 = 300.0;
 
@@ -182,37 +178,7 @@ where
                     continue;
                 }
 
-                data[m.a.component::<Creature>()].timeout = DEFAULT_TIMEOUT;
-                data[m.b.component::<Creature>()].timeout = DEFAULT_TIMEOUT;
-
-                let e = data.lazy.add_entity();
-                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
-                let color = Color::new(
-                    random::<f32>(),
-                    random::<f32>(),
-                    random::<f32>(),
-                    random::<f32>(),
-                );
-                let kind = if random::<bool>() {
-                    Kind::Vegan
-                } else {
-                    Kind::Carnivorous
-                };
-                data.lazy.insert(e, Creature::new(kind));
-                data.lazy.insert(
-                    e,
-                    Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
-                );
-                let vx = random::<f32>() * 2.0 - 1.0;
-                let vy = random::<f32>() * 2.0 - 1.0;
-                data.lazy.insert(e, Velocity::new(vx * SPEED, vy * SPEED));
-                data.lazy.insert(e, Direction::new(random::<f32>()));
-                data.lazy
-                    .insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
-                data.lazy.insert(e, Draw::circle(ctx, radius, color)?);
-                data.lazy.insert(e, Network::new(&[6, 6, 8]));
-                data.lazy.insert(e, Inputs::new(6));
-                data.lazy.insert(e, Outputs::new(8));
+                mate(ctx, data, m.a, m.b)?;
             }
         }
     }

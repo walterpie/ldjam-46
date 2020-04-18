@@ -8,6 +8,7 @@ use crate::data::{Entity, GameData};
 #[derive(Debug, Clone, PartialEq)]
 pub struct Draw {
     mesh: Mesh,
+    pub color: Color,
 }
 
 impl Draw {
@@ -15,7 +16,7 @@ impl Draw {
         let mesh = MeshBuilder::new()
             .circle(DrawMode::fill(), [0.0, 0.0], radius, 0.25, color)
             .build(ctx)?;
-        Ok(Self { mesh })
+        Ok(Self { mesh, color })
     }
 }
 
