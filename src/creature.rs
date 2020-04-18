@@ -9,6 +9,7 @@ use crate::mutate::Mutate;
 use crate::nn::{Inputs, Network, Outputs};
 
 pub const DEFAULT_TIMEOUT: f32 = 10.0;
+pub const RAY_COUNT: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Kind {
@@ -133,8 +134,8 @@ pub fn mate(ctx: &mut Context, data: &mut GameData, a: Entity, b: Entity) -> Gam
     data.lazy.insert(e, Direction::new(0.0));
     data.lazy.insert(e, Body::new(radius, mass, restitution));
     data.lazy.insert(e, Draw::circle(ctx, radius, color)?);
-    data.lazy.insert(e, Network::new(&[6, 6, 8]));
-    data.lazy.insert(e, Inputs::new(6));
+    data.lazy.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, 8]));
+    data.lazy.insert(e, Inputs::new(RAY_COUNT * 2));
     data.lazy.insert(e, Outputs::new(8));
 
     Ok(())

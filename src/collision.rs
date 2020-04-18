@@ -123,7 +123,7 @@ pub fn gen_manifold(data: &mut GameData, a: Entity, b: Entity) -> Option<Manifol
     })
 }
 
-pub fn raycast<I>(data: &GameData, ray: &Ray, entities: I) -> Option<(Entity, f32)>
+pub fn raycast<I>(data: &GameData, ray: &Ray, this: Entity, entities: I) -> Option<(Entity, f32)>
 where
     I: IntoIterator<Item = Entity>,
 {
@@ -131,16 +131,19 @@ where
     let mut result = None;
     let mut min_dist = f32::INFINITY;
     for e in entities {
+        if e == this {
+            continue;
+        }
+
         let pos = data[e.component::<Position>()].position;
         let radius = data[e.component::<Body>()].radius;
         let a = pos - ray.p1;
         let dot = a.dot(&b);
-        let len = b.magnitude();
-        let t = dot / len;
+        let len2 = b.magnitude_squared();
+        let t = dot / len2;
         if t < 0.0 || t >= 1.0 {
             continue;
         }
-        let len2 = len * len;
         let a1 = b * (dot / len2);
         let a2 = a - a1;
         if a2.magnitude_squared() > radius * radius {
@@ -213,33 +216,19 @@ where
     for e in entities.clone() {
         let p1 = data[e.component::<Position>()].position;
         let d = data[e.component::<Direction>()].direction;
-        let (y, x) = d.sin_cos();
-        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
-        let ray = Ray { p1, p2 };
-        let r1 = raycast(data, &ray, entities.clone());
-        let (y, x) = (d + 45.0_f32.to_radians()).sin_cos();
-        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
-        let ray = Ray { p1, p2 };
-        let r2 = raycast(data, &ray, entities.clone());
-        let (y, x) = (d - 45.0_f32.to_radians()).sin_cos();
-        let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
-        let ray = Ray { p1, p2 };
-        let r3 = raycast(data, &ray, entities.clone());
-        let mut inputs = vec![0.0; 6];
-        if let Some((e, d)) = r1 {
-            let kind = data[e.component::<Creature>()].kind;
-            inputs[0] = kind.as_f32();
-            inputs[3] = d / VIEW_DISTANCE;
-        }
-        if let Some((e, d)) = r2 {
-            let kind = data[e.component::<Creature>()].kind;
-            inputs[1] = kind.as_f32();
-            inputs[4] = d / VIEW_DISTANCE;
-        }
-        if let Some((e, d)) = r3 {
-            let kind = data[e.component::<Creature>()].kind;
-            inputs[2] = kind.as_f32();
-            inputs[5] = d / VIEW_DISTANCE;
+        let mut inputs = vec![1.0; RAY_COUNT * 2];
+        for i in 0..RAY_COUNT {
+            let f = i as f32 / (RAY_COUNT as f32 - 1.0);
+            let d = -45.0_f32 * f + d + 45.0_f32 * f;
+            let (y, x) = d.sin_cos();
+            let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
+            let ray = Ray { p1, p2 };
+            let result = raycast(data, &ray, e, entities.clone());
+            if let Some((e, d)) = result {
+                let kind = data[e.component::<Creature>()].kind;
+                inputs[i * 2] = kind.as_f32();
+                inputs[i * 2 + 1] = d / VIEW_DISTANCE;
+            }
         }
         data[e.component::<Inputs>()].input = DVector::from_vec(inputs);
     }
@@ -248,9 +237,9 @@ where
 
 pub fn output_system<I>(data: &mut GameData, entities: I) -> GameResult<()>
 where
-    I: IntoIterator<Item = Entity> + Clone,
+    I: IntoIterator<Item = Entity>,
 {
-    for e in entities.clone() {
+    for e in entities {
         let output = &data[e.component::<Outputs>()].output;
         let (index, _) = output
             .iter()

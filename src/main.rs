@@ -45,12 +45,7 @@ impl GameState {
         for _ in 0..CREATURE_COUNT {
             let e = data.add_entity();
             let radius = random::<f32>() * RADIUS * DPI_FACTOR;
-            let color = Color::new(
-                random::<f32>(),
-                random::<f32>(),
-                random::<f32>(),
-                random::<f32>(),
-            );
+            let color = Color::new(random::<f32>(), random::<f32>(), random::<f32>(), 1.0);
             let kind = if random::<bool>() {
                 Kind::Vegan
             } else {
@@ -65,8 +60,8 @@ impl GameState {
             data.insert(e, Direction::new(0.0));
             data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
             data.insert(e, Draw::circle(ctx, radius, color)?);
-            data.insert(e, Network::new(&[6, 6, 8]));
-            data.insert(e, Inputs::new(6));
+            data.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, 8]));
+            data.insert(e, Inputs::new(RAY_COUNT * 2));
             data.insert(e, Outputs::new(8));
             creatures.push(e)
         }
