@@ -1,0 +1,8 @@
+- an nn-driven game of life type of thing (about bacteria? about tiny evolving animals?)
+- ~~tamagotchi-like game (with a twist???)~~
+- quack vs honk.
+- ~~fighting/kill-em-all game about keeping yourself alive~~
+  - the twist is, the controls are passive
+  - neural network? 
+    - more like a neural-network inspired map
+  - visual manipulation of an ever evolving nn

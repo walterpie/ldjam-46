@@ -1,0 +1,10 @@
+- creatures
+  - ~~position~~
+  - ~~velocity~~
+  - seek direction
+  - vegetarian
+  - carnivorous
+- food
+- ~~collision~~
+  - ~~circular only~~
+- nn
