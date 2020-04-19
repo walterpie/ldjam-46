@@ -1,3 +1,5 @@
+use std::iter;
+
 use ggez::GameResult;
 
 use nalgebra::{DMatrix, DVector};
@@ -66,19 +68,21 @@ impl Outputs {
     }
 }
 
+/// Rnn-ish thing, not scientifically gud
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Network {
+    cache: DVector<f32>,
     weights: Vec<DMatrix<f32>>,
     biases: Vec<DVector<f32>>,
 }
 
 impl Network {
     pub fn new(layers: &[usize]) -> Network {
+        let last = *layers.last().unwrap();
         let mut weights = Vec::with_capacity(layers.len() - 1);
         let mut biases = Vec::with_capacity(layers.len() - 1);
-        let iter = layers[..layers.len() - 1]
-            .iter()
-            .copied()
+        let iter = iter::once(layers[0] + last)
+            .chain(layers[1..layers.len() - 1].iter().copied())
             .zip(layers[1..].iter().copied());
         let mut rng = thread_rng();
         for (input, output) in iter {
@@ -93,14 +97,22 @@ impl Network {
             }
             biases.push(DVector::from_vec(vec));
         }
-        Network { weights, biases }
+        let cache = DVector::zeros(last);
+        Network {
+            cache,
+            weights,
+            biases,
+        }
     }
 
-    pub fn feedforward(&self, mut layer: DVector<f32>) -> DVector<f32> {
+    pub fn feedforward(&mut self, layer: DVector<f32>) -> DVector<f32> {
+        let layer = self.cache.iter().chain(&layer).copied().collect();
+        let mut layer = DVector::from_vec(layer);
         for (w, b) in self.weights.iter().zip(&self.biases) {
             let result = w * layer + b;
             layer = result.map(sigmoid);
         }
+        self.cache = layer.clone();
         layer
     }
 

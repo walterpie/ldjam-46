@@ -21,7 +21,6 @@ pub mod creature;
 pub mod data;
 pub mod draw;
 pub mod lazy;
-pub mod lstm;
 pub mod mutate;
 pub mod nn;
 
