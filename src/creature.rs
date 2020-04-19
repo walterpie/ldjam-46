@@ -106,8 +106,8 @@ impl Direction {
 }
 
 pub const M_FACTOR: f32 = 0.5;
-pub const M_CHANCE: f32 = 0.5;
-pub const M_MUTATION: f32 = 0.05;
+pub const M_CHANCE: f32 = 0.05;
+pub const M_MUTATION: f32 = 0.10;
 
 pub fn mate(ctx: &mut Context, data: &mut GameData, a: Entity, b: Entity) -> GameResult<()> {
     let timeout = match data[a.component::<Creature>()].kind {
@@ -163,9 +163,9 @@ pub fn mate(ctx: &mut Context, data: &mut GameData, a: Entity, b: Entity) -> Gam
         data.lazy.insert(e, Velocity::new(0.0, 0.0));
         data.lazy.insert(e, Direction::new(0.0));
         data.lazy.insert(e, Body::new(radius, mass, restitution));
-        data.lazy.insert(e, Draw::circle(ctx, radius, color)?);
+        data.lazy.insert(e, Draw::creature(ctx, radius, color)?);
         data.lazy
-            .insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, DIR_COUNT]));
+            .insert(e, Network::new(&[RAY_COUNT * 2, 24, 20, DIR_COUNT]));
         data.lazy.insert(e, Inputs::new(RAY_COUNT * 2));
         data.lazy.insert(e, Outputs::new(DIR_COUNT));
         data.lazy.insert(e, Desired::new(DIR_COUNT));

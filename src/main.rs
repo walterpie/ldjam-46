@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
+use ggez::audio::{SoundSource, Source};
 use ggez::conf::WindowMode;
 use ggez::event::{self, EventHandler};
 use ggez::graphics::{self, Color};
@@ -25,8 +26,8 @@ pub mod lazy;
 pub mod mutate;
 pub mod nn;
 
-pub const TIME_FACTOR: f32 = 1.0;
-pub const GEN_TIME: f32 = 14.4 / TIME_FACTOR;
+pub const TIME_FACTOR: f32 = 2.5;
+pub const GEN_TIME: f32 = 72.0 / TIME_FACTOR;
 pub const DPI_FACTOR: f32 = 1.0 / 3.166;
 pub const WIDTH: f32 = 1920.0 * DPI_FACTOR;
 pub const HEIGHT: f32 = 1080.0 * DPI_FACTOR;
@@ -40,10 +41,10 @@ pub const MAX_RADIUS: f32 = VEGAN_MAX_RADIUS;
 pub const CARNIVORE_SPEED: f32 = 40.0 * TIME_FACTOR;
 pub const VEGAN_SPEED: f32 = 100.0 * TIME_FACTOR;
 pub const TOP_COUNT: usize = 10;
-pub const CREATURE_COUNT: usize = 500;
+pub const CREATURE_COUNT: usize = 100;
 pub const FOOD_COUNT: usize = 30;
 pub const FOOD_TIMEOUT: f32 = 1.0 / TIME_FACTOR;
-pub const CARNIVORE_RATIO: f32 = 0.03;
+pub const CARNIVORE_RATIO: f32 = 0.06;
 
 enum State {
     Game,
@@ -84,48 +85,48 @@ impl GameState {
 
         let mut carnivores = (CREATURE_COUNT as f32 * CARNIVORE_RATIO) as usize;
 
-        if generation > 0 {
-            if let Some(path) = env::args().next() {
-                let path: &Path = path.as_ref();
-                if path.exists() {
-                    let encoded = fs::read(path).expect("couldn't load top 10");
-                    let top: Vec<(Creature, Network)> =
-                        bincode::deserialize(&encoded).expect("couldn't deserialize top 10");
+        let mut args = env::args();
+        args.next();
+        if let Some(path) = args.next() {
+            println!("{:?}", path);
+            let path: &Path = path.as_ref();
+            if path.exists() {
+                let encoded = fs::read(path).expect("couldn't load top 10");
+                let top: Vec<(Creature, Network)> =
+                    bincode::deserialize(&encoded).expect("couldn't deserialize top 10");
 
-                    new_count -= top.len();
+                new_count -= top.len();
 
-                    for (creature, network) in top {
-                        let e = data.add_entity();
-                        let radius = if creature.kind == Kind::Vegan {
-                            (VEGAN_MIN_RADIUS
-                                + random::<f32>() * (VEGAN_MAX_RADIUS - VEGAN_MIN_RADIUS))
-                                * DPI_FACTOR
-                        } else {
-                            carnivores -= 1;
-                            (CARNIVORE_MIN_RADIUS
-                                + random::<f32>() * (CARNIVORE_MAX_RADIUS - CARNIVORE_MIN_RADIUS))
-                                * DPI_FACTOR
-                        };
-                        let color = if creature.kind == Kind::Vegan {
-                            Color::new(0.0, random::<f32>(), random::<f32>() * 0.2, 1.0)
-                        } else {
-                            Color::new(random::<f32>(), 0.0, random::<f32>() * 0.2, 1.0)
-                        };
-                        data.insert(e, creature);
-                        data.insert(
-                            e,
-                            Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
-                        );
-                        data.insert(e, Velocity::new(0.0, 0.0));
-                        data.insert(e, Direction::new(0.0));
-                        data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
-                        data.insert(e, Draw::circle(ctx, radius, color)?);
-                        data.insert(e, network);
-                        data.insert(e, Inputs::new(RAY_COUNT * 2));
-                        data.insert(e, Outputs::new(DIR_COUNT));
-                        data.insert(e, Desired::new(DIR_COUNT));
-                        creatures.push(e)
-                    }
+                for (creature, network) in top {
+                    let e = data.add_entity();
+                    let radius = if creature.kind == Kind::Vegan {
+                        (VEGAN_MIN_RADIUS + random::<f32>() * (VEGAN_MAX_RADIUS - VEGAN_MIN_RADIUS))
+                            * DPI_FACTOR
+                    } else {
+                        carnivores -= 1;
+                        (CARNIVORE_MIN_RADIUS
+                            + random::<f32>() * (CARNIVORE_MAX_RADIUS - CARNIVORE_MIN_RADIUS))
+                            * DPI_FACTOR
+                    };
+                    let color = if creature.kind == Kind::Vegan {
+                        Color::new(0.0, random::<f32>(), random::<f32>() * 0.2, 1.0)
+                    } else {
+                        Color::new(random::<f32>(), 0.0, random::<f32>() * 0.2, 1.0)
+                    };
+                    data.insert(e, creature);
+                    data.insert(
+                        e,
+                        Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
+                    );
+                    data.insert(e, Velocity::new(0.0, 0.0));
+                    data.insert(e, Direction::new(0.0));
+                    data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
+                    data.insert(e, Draw::creature(ctx, radius, color)?);
+                    data.insert(e, network);
+                    data.insert(e, Inputs::new(RAY_COUNT * 2));
+                    data.insert(e, Outputs::new(DIR_COUNT));
+                    data.insert(e, Desired::new(DIR_COUNT));
+                    creatures.push(e)
                 }
             }
         }
@@ -157,8 +158,8 @@ impl GameState {
             data.insert(e, Velocity::new(0.0, 0.0));
             data.insert(e, Direction::new(0.0));
             data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
-            data.insert(e, Draw::circle(ctx, radius, color)?);
-            data.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, DIR_COUNT]));
+            data.insert(e, Draw::creature(ctx, radius, color)?);
+            data.insert(e, Network::new(&[RAY_COUNT * 2, 24, 20, DIR_COUNT]));
             data.insert(e, Inputs::new(RAY_COUNT * 2));
             data.insert(e, Outputs::new(DIR_COUNT));
             data.insert(e, Desired::new(DIR_COUNT));
@@ -298,13 +299,18 @@ impl EventHandler for GameState {
 }
 
 struct Game {
+    _sound: Source,
     game: GameState,
     state: State,
 }
 
 impl Game {
     pub fn new(ctx: &mut Context) -> GameResult<Game> {
+        let mut sound = Source::new(ctx, "/ldjam.mp3")?;
+        sound.set_repeat(true);
+        sound.play()?;
         Ok(Game {
+            _sound: sound,
             game: GameState::new(ctx, 0)?,
             state: State::Game,
         })
