@@ -1,10 +1,14 @@
-- creatures
+- ~~creatures~~
   - ~~position~~
   - ~~velocity~~
-  - seek direction
-  - vegetarian
-  - carnivorous
-- food
+  - ~~seek direction~~
+  - ~~vegetarian~~
+  - ~~carnivorous~~
+- ~~food~~
 - ~~collision~~
   - ~~circular only~~
-- nn
+- ~~nn~~
+- generations
+  - after they all die, or after 72 seconds, go on
+  - save generation to file "genX.bin", where X is the number of generation
+  - after 100 generations, pick the best one
