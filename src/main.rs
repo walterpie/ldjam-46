@@ -257,7 +257,7 @@ impl EventHandler for GameState {
 
     fn quit_event(&mut self, _ctx: &mut Context) -> bool {
         // filler
-        let mut top = vec![(Creature::new(Kind::Vegan), Network::new(&[1])); CREATURE_COUNT];
+        let mut top = vec![(Creature::new(Kind::Vegan), Network::new(&[1, 1])); CREATURE_COUNT];
         for e in self.creatures.iter().copied() {
             for top in top.iter_mut() {
                 if self.data[e.component::<Creature>()].life > top.0.life {
