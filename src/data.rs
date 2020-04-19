@@ -6,7 +6,7 @@ use crate::collision::*;
 use crate::creature::*;
 use crate::draw::*;
 use crate::lazy::*;
-use crate::nn::{Inputs, Network, Outputs};
+use crate::nn::{Desired, Inputs, Network, Outputs};
 
 pub trait Has<T> {
     fn has(&self, c: Component<T>) -> bool;
@@ -31,6 +31,7 @@ pub struct GameData {
     nns: Vec<Option<Network>>,
     inputs: Vec<Option<Inputs>>,
     outputs: Vec<Option<Outputs>>,
+    desired: Vec<Option<Desired>>,
     pub lazy: LazyUpdate,
 }
 
@@ -49,6 +50,7 @@ impl GameData {
             nns: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            desired: Vec::new(),
             lazy: LazyUpdate::new(),
         }
     }
@@ -64,6 +66,7 @@ impl GameData {
         self.nns.push(None);
         self.inputs.push(None);
         self.outputs.push(None);
+        self.desired.push(None);
 
         let e = Entity { idx: self.entity };
         self.entity += 1;
@@ -94,6 +97,7 @@ impl GameData {
         self.nns.extend(self.lazy.nns.drain(..));
         self.inputs.extend(self.lazy.inputs.drain(..));
         self.outputs.extend(self.lazy.outputs.drain(..));
+        self.desired.extend(self.lazy.desired.drain(..));
         for e in self.lazy.remove.drain(..) {
             self.creatures[e.idx] = None;
             self.foods[e.idx] = None;
@@ -105,6 +109,7 @@ impl GameData {
             self.nns[e.idx] = None;
             self.inputs[e.idx] = None;
             self.outputs[e.idx] = None;
+            self.desired[e.idx] = None;
             remove.push(e);
         }
         (result, remove)
@@ -470,5 +475,39 @@ impl Has<Outputs> for GameData {
 impl Insert<Outputs> for GameData {
     fn insert(&mut self, e: Entity, t: Outputs) {
         self.outputs[e.idx] = Some(t);
+    }
+}
+
+impl Index<Component<Desired>> for GameData {
+    type Output = Desired;
+
+    fn index(&self, idx: Component<Desired>) -> &Self::Output {
+        self.desired[idx.idx]
+            .as_ref()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl IndexMut<Component<Desired>> for GameData {
+    fn index_mut(&mut self, idx: Component<Desired>) -> &mut Self::Output {
+        self.desired[idx.idx]
+            .as_mut()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl Has<Desired> for GameData {
+    fn has(&self, c: Component<Desired>) -> bool {
+        if self.delete.contains(&Entity { idx: c.idx }) {
+            return false;
+        }
+
+        self.desired[c.idx].is_some()
+    }
+}
+
+impl Insert<Desired> for GameData {
+    fn insert(&mut self, e: Entity, t: Desired) {
+        self.desired[e.idx] = Some(t);
     }
 }

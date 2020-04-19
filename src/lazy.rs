@@ -5,7 +5,7 @@ use crate::collision::*;
 use crate::creature::*;
 use crate::data::{Entity, Insert};
 use crate::draw::*;
-use crate::nn::{Inputs, Network, Outputs};
+use crate::nn::{Desired, Inputs, Network, Outputs};
 
 /// A collection of lazily evaluated components
 #[derive(Debug, PartialEq)]
@@ -22,6 +22,7 @@ pub struct LazyUpdate {
     pub nns: Vec<Option<Network>>,
     pub inputs: Vec<Option<Inputs>>,
     pub outputs: Vec<Option<Outputs>>,
+    pub desired: Vec<Option<Desired>>,
 }
 
 impl LazyUpdate {
@@ -39,6 +40,7 @@ impl LazyUpdate {
             nns: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            desired: Vec::new(),
         }
     }
 
@@ -53,6 +55,7 @@ impl LazyUpdate {
         self.nns.push(None);
         self.inputs.push(None);
         self.outputs.push(None);
+        self.desired.push(None);
 
         let e = Entity { idx: self.entity };
         self.entity += 1;
@@ -308,5 +311,29 @@ impl IndexMut<Component<Outputs>> for LazyUpdate {
 impl Insert<Outputs> for LazyUpdate {
     fn insert(&mut self, e: Entity, t: Outputs) {
         self.outputs[e.idx] = Some(t);
+    }
+}
+
+impl Index<Component<Desired>> for LazyUpdate {
+    type Output = Desired;
+
+    fn index(&self, idx: Component<Desired>) -> &Self::Output {
+        self.desired[idx.idx]
+            .as_ref()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl IndexMut<Component<Desired>> for LazyUpdate {
+    fn index_mut(&mut self, idx: Component<Desired>) -> &mut Self::Output {
+        self.desired[idx.idx]
+            .as_mut()
+            .expect("entity doesn't have component")
+    }
+}
+
+impl Insert<Desired> for LazyUpdate {
+    fn insert(&mut self, e: Entity, t: Desired) {
+        self.desired[e.idx] = Some(t);
     }
 }

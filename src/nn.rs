@@ -11,12 +11,6 @@ use rand_distr::StandardNormal;
 
 use crate::data::{Entity, GameData};
 
-pub fn softmax(x: DVector<f32>) -> DVector<f32> {
-    let max = x.max();
-    let e = x.map(|e| e - max).map(|f| f.exp());
-    &e * e.sum().recip()
-}
-
 pub fn sigmoid(n: f32) -> f32 {
     (1.0 + n.exp()).recip()
 }
@@ -26,14 +20,14 @@ pub fn sigmoid_der(n: f32) -> f32 {
     sig * (1.0 - sig)
 }
 
-pub fn cost(result: DMatrix<f32>, desired: DMatrix<f32>) -> f32 {
+pub fn cost(result: &DVector<f32>, desired: &DVector<f32>) -> f32 {
     let diff = result - desired;
     let prod = diff.component_mul(&diff);
     prod.sum()
 }
 
 pub fn nabla_w_l(act: &DVector<f32>, delta: &DVector<f32>) -> DMatrix<f32> {
-    let mut output: DMatrix<f32> = DMatrix::zeros(act.nrows(), delta.nrows());
+    let mut output: DMatrix<f32> = DMatrix::zeros(delta.nrows(), act.nrows());
     for i in 0..delta.nrows() {
         for j in 0..act.nrows() {
             output[(i, j)] = act[j] * delta[i];
@@ -68,10 +62,24 @@ impl Outputs {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Desired {
+    pub desired: DVector<f32>,
+}
+
+impl Desired {
+    pub fn new(n: usize) -> Self {
+        Self {
+            desired: DVector::zeros(n),
+        }
+    }
+}
+
 /// Rnn-ish thing, not scientifically gud
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Network {
-    cache: DVector<f32>,
+    cache_next: DVector<f32>,
+    cache_prev: DVector<f32>,
     weights: Vec<DMatrix<f32>>,
     biases: Vec<DVector<f32>>,
 }
@@ -97,29 +105,36 @@ impl Network {
             }
             biases.push(DVector::from_vec(vec));
         }
-        let cache = DVector::zeros(last);
+        let cache_next = DVector::zeros(last);
+        let cache_prev = DVector::zeros(last);
         Network {
-            cache,
+            cache_next,
+            cache_prev,
             weights,
             biases,
         }
     }
 
-    pub fn feedforward(&mut self, layer: DVector<f32>) -> DVector<f32> {
-        let layer = self.cache.iter().chain(&layer).copied().collect();
+    pub fn feedforward(&mut self, layer: &DVector<f32>) -> DVector<f32> {
+        let layer = self.cache_next.iter().chain(layer).copied().collect();
         let mut layer = DVector::from_vec(layer);
         for (w, b) in self.weights.iter().zip(&self.biases) {
             let result = w * layer + b;
             layer = result.map(sigmoid);
         }
-        self.cache = layer.clone();
+        self.cache_next = layer.clone();
         layer
     }
 
     pub fn update(&mut self, input: &DVector<f32>, desired: &DVector<f32>, eta: f32) {
+        let layer = self.cache_prev.iter().chain(input).copied().collect();
+        let layer = DVector::from_vec(layer);
+
+        self.cache_prev = input.clone();
+
         let mut nabla_b = Vec::new();
         let mut nabla_w = Vec::new();
-        self.backprop(&mut nabla_b, &mut nabla_w, input, desired);
+        self.backprop(&mut nabla_b, &mut nabla_w, &layer, desired);
 
         let iter = self
             .weights
@@ -127,10 +142,8 @@ impl Network {
             .zip(nabla_w)
             .zip(self.biases.iter_mut().zip(nabla_b));
         for ((w0, w1), (b0, b1)) in iter {
-            let w = w1 * eta;
-            let b = b1 * eta;
-            *w0 -= w;
-            *b0 -= b;
+            *w0 -= w1 * eta;
+            *b0 -= b1 * eta;
         }
     }
 
@@ -142,7 +155,7 @@ impl Network {
         desired: &DVector<f32>,
     ) {
         let mut activations = Vec::with_capacity(self.weights.len() + 1);
-        activations[0] = input.clone();
+        activations.push(input.clone());
 
         let mut activation = 0;
 
@@ -158,14 +171,14 @@ impl Network {
         let tmp1 = &activations[activation] - desired;
         let tmp2 = zs.last().unwrap().map(sigmoid_der);
         let delta = tmp1.component_mul(&tmp2);
-        nabla_w.push(nabla_w_l(activations.last().unwrap(), &delta));
+        nabla_w.push(nabla_w_l(&activations[activations.len() - 2], &delta));
         nabla_b.push(delta);
         let len = self.weights.len();
         for l in 2..len + 1 {
             let z = &zs[len - l];
             let der = z.map(sigmoid_der);
             let tmp = self.weights[len - l + 1].transpose();
-            let a = tmp * &nabla_b[l - 1];
+            let a = tmp * &nabla_b[l - 2];
             let delta = a.component_mul(&der);
             nabla_w.push(nabla_w_l(&activations[len - l], &delta));
             nabla_b.push(delta);
@@ -181,9 +194,13 @@ where
 {
     for e in entities {
         let input = data[e.component::<Inputs>()].input.clone();
+        let desired = data[e.component::<Desired>()].desired.clone();
         let network = &mut data[e.component::<Network>()];
 
-        let output = network.feedforward(input);
+        let output = network.feedforward(&input);
+
+        let cost = cost(&output, &desired);
+        network.update(&input, &desired, cost);
 
         data[e.component::<Outputs>()].output = output;
     }

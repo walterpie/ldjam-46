@@ -14,7 +14,7 @@ use self::collision::Body;
 use self::creature::*;
 use self::data::{Entity, GameData, Insert};
 use self::draw::Draw;
-use self::nn::{Inputs, Network, Outputs};
+use self::nn::{Desired, Inputs, Network, Outputs};
 
 pub mod collision;
 pub mod creature;
@@ -24,15 +24,23 @@ pub mod lazy;
 pub mod mutate;
 pub mod nn;
 
+pub const TIME_FACTOR: f32 = 0.2;
 pub const DPI_FACTOR: f32 = 1.0 / 3.166;
 pub const WIDTH: f32 = 1280.0 * DPI_FACTOR;
 pub const HEIGHT: f32 = 720.0 * DPI_FACTOR;
-pub const RADIUS: f32 = 16.0;
-pub const SPEED: f32 = 100.0;
-pub const CREATURE_COUNT: usize = 40;
-pub const FOOD_COUNT: usize = 15;
-pub const FOOD_TIMEOUT: f32 = 8.0;
-pub const VEGAN_RATIO: f32 = 0.66;
+pub const FOOD_MIN_RADIUS: f32 = 10.0;
+pub const FOOD_MAX_RADIUS: f32 = 20.0;
+pub const VEGAN_MIN_RADIUS: f32 = 15.0;
+pub const VEGAN_MAX_RADIUS: f32 = 30.0;
+pub const CARNIVORE_MIN_RADIUS: f32 = 7.0;
+pub const CARNIVORE_MAX_RADIUS: f32 = 14.0;
+pub const MAX_RADIUS: f32 = VEGAN_MAX_RADIUS;
+pub const CARNIVORE_SPEED: f32 = 40.0 * TIME_FACTOR;
+pub const VEGAN_SPEED: f32 = 100.0 * TIME_FACTOR;
+pub const CREATURE_COUNT: usize = 100;
+pub const FOOD_COUNT: usize = 30;
+pub const FOOD_TIMEOUT: f32 = 1.0 / TIME_FACTOR;
+pub const CARNIVORE_RATIO: f32 = 0.03;
 
 enum State {
     Game,
@@ -52,8 +60,10 @@ impl GameState {
         let mut creatures = Vec::new();
         for _ in 0..FOOD_COUNT {
             let e = data.add_entity();
-            let radius = random::<f32>() * RADIUS * DPI_FACTOR;
-            let color = Color::new(random::<f32>(), random::<f32>(), random::<f32>(), 1.0);
+            let radius = (FOOD_MIN_RADIUS + random::<f32>() * (FOOD_MAX_RADIUS - FOOD_MIN_RADIUS))
+                * DPI_FACTOR;
+            let color = random::<f32>();
+            let color = Color::new(color, color, color, 1.0);
             data.insert(e, Food);
             data.insert(
                 e,
@@ -67,6 +77,8 @@ impl GameState {
 
         let mut new_count = CREATURE_COUNT;
 
+        let mut carnivores = (CREATURE_COUNT as f32 * CARNIVORE_RATIO) as usize;
+
         let path: &Path = "alive.bin".as_ref();
         if path.exists() {
             let encoded = fs::read("alive.bin").expect("couldn't load top 20 from `alive.bin`");
@@ -77,11 +89,19 @@ impl GameState {
 
             for (creature, network) in top {
                 let e = data.add_entity();
-                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
-                let color = if creature.kind == Kind::Vegan {
-                    Color::new(0.0, random::<f32>(), random::<f32>(), 1.0)
+                let radius = if creature.kind == Kind::Vegan {
+                    (VEGAN_MIN_RADIUS + random::<f32>() * (VEGAN_MAX_RADIUS - VEGAN_MIN_RADIUS))
+                        * DPI_FACTOR
                 } else {
-                    Color::new(random::<f32>(), 0.0, random::<f32>(), 1.0)
+                    carnivores -= 1;
+                    (CARNIVORE_MIN_RADIUS
+                        + random::<f32>() * (CARNIVORE_MAX_RADIUS - CARNIVORE_MIN_RADIUS))
+                        * DPI_FACTOR
+                };
+                let color = if creature.kind == Kind::Vegan {
+                    Color::new(0.0, random::<f32>(), random::<f32>() * 0.2, 1.0)
+                } else {
+                    Color::new(random::<f32>(), 0.0, random::<f32>() * 0.2, 1.0)
                 };
                 data.insert(e, creature);
                 data.insert(
@@ -95,20 +115,29 @@ impl GameState {
                 data.insert(e, network);
                 data.insert(e, Inputs::new(RAY_COUNT * 2));
                 data.insert(e, Outputs::new(DIR_COUNT));
+                data.insert(e, Desired::new(DIR_COUNT));
                 creatures.push(e)
             }
         }
 
         for _ in 0..new_count {
             let e = data.add_entity();
-            let radius = random::<f32>() * RADIUS * DPI_FACTOR;
             let color;
-            let kind = if random::<f32>() < VEGAN_RATIO {
-                color = Color::new(0.0, random::<f32>(), random::<f32>(), 1.0);
+            let kind = if carnivores == 0 {
+                color = Color::new(0.0, random::<f32>(), random::<f32>() * 0.2, 1.0);
                 Kind::Vegan
             } else {
-                color = Color::new(random::<f32>(), 0.0, random::<f32>(), 1.0);
+                carnivores -= 1;
+                color = Color::new(random::<f32>(), 0.0, random::<f32>() * 0.2, 1.0);
                 Kind::Carnivorous
+            };
+            let radius = if kind == Kind::Vegan {
+                (VEGAN_MIN_RADIUS + random::<f32>() * (VEGAN_MAX_RADIUS - VEGAN_MIN_RADIUS))
+                    * DPI_FACTOR
+            } else {
+                (CARNIVORE_MIN_RADIUS
+                    + random::<f32>() * (CARNIVORE_MAX_RADIUS - CARNIVORE_MIN_RADIUS))
+                    * DPI_FACTOR
             };
             data.insert(e, Creature::new(kind));
             data.insert(
@@ -122,6 +151,7 @@ impl GameState {
             data.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, DIR_COUNT]));
             data.insert(e, Inputs::new(RAY_COUNT * 2));
             data.insert(e, Outputs::new(DIR_COUNT));
+            data.insert(e, Desired::new(DIR_COUNT));
             creatures.push(e)
         }
 
@@ -136,15 +166,17 @@ impl GameState {
 
 impl EventHandler for GameState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
-        let delta = timer::delta(ctx);
-        let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
+        let delta = timer::duration_to_f64(timer::delta(ctx)) as f32;
         self.food_timeout += delta;
         if self.food_timeout > FOOD_TIMEOUT {
             self.food_timeout -= FOOD_TIMEOUT;
             for _ in 0..FOOD_COUNT {
                 let e = self.data.add_entity();
-                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
-                let color = Color::new(random::<f32>(), random::<f32>(), random::<f32>(), 1.0);
+                let radius = (FOOD_MIN_RADIUS
+                    + random::<f32>() * (FOOD_MAX_RADIUS - FOOD_MIN_RADIUS))
+                    * DPI_FACTOR;
+                let color = random::<f32>();
+                let color = Color::new(color, color, color, 1.0);
                 self.data.insert(e, Food);
                 self.data.insert(
                     e,
@@ -161,7 +193,11 @@ impl EventHandler for GameState {
             self.data[e.component::<Creature>()].timeout -= delta;
             self.data[e.component::<Creature>()].life += delta;
             self.data[e.component::<Creature>()].hunger += delta;
-            if self.data[e.component::<Creature>()].hunger > STARVE {
+            let starve = match self.data[e.component::<Creature>()].kind {
+                Kind::Carnivorous => CARNIVORE_STARVE,
+                Kind::Vegan => VEGAN_STARVE,
+            };
+            if self.data[e.component::<Creature>()].hunger > starve {
                 self.data.delete(e);
                 self.data.lazy.remove(e);
             }

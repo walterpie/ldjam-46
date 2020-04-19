@@ -11,10 +11,10 @@ use rand::random;
 
 use crate::creature::*;
 use crate::data::{Entity, GameData, Has};
-use crate::nn::{Inputs, Outputs};
-use crate::{HEIGHT, RADIUS, SPEED, WIDTH};
+use crate::nn::{Desired, Inputs, Outputs};
+use crate::{CARNIVORE_SPEED, HEIGHT, MAX_RADIUS, VEGAN_SPEED, WIDTH};
 
-pub const VIEW_DISTANCE: f32 = 10000.0;
+pub const VIEW_DISTANCE: f32 = WIDTH;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
@@ -191,13 +191,13 @@ where
                     match (c1.kind, c2.kind) {
                         (Kind::Vegan, Kind::Vegan) => {}
                         (Kind::Vegan, Kind::Carnivorous) => {
-                            data[m.b.component::<Creature>()].hunger -= FOOD;
+                            data[m.b.component::<Creature>()].hunger -= CARNIVORE_NUTRITION;
                             data.delete(m.a);
                             data.lazy.remove(m.a);
                             continue;
                         }
                         (Kind::Carnivorous, Kind::Vegan) => {
-                            data[m.a.component::<Creature>()].hunger -= FOOD;
+                            data[m.a.component::<Creature>()].hunger -= CARNIVORE_NUTRITION;
                             data.delete(m.b);
                             data.lazy.remove(m.b);
                             continue;
@@ -211,20 +211,27 @@ where
                     mate(ctx, data, m.a, m.b)?;
                 } else if data.has(m.a.component::<Creature>()) && data.has(m.b.component::<Food>())
                 {
-                    data[m.a.component::<Creature>()].hunger -= FOOD;
+                    let c = data[m.a.component::<Creature>()];
+                    if c.kind == Kind::Carnivorous {
+                        continue;
+                    }
+                    data[m.a.component::<Creature>()].hunger -= VEGAN_NUTRITION;
                     data.delete(m.b);
                     data.lazy.remove(m.b);
                 } else if data.has(m.a.component::<Food>()) && data.has(m.b.component::<Creature>())
                 {
-                    data[m.b.component::<Creature>()].hunger -= FOOD;
+                    let c = data[m.b.component::<Creature>()];
+                    if c.kind == Kind::Carnivorous {
+                        continue;
+                    }
+                    data[m.b.component::<Creature>()].hunger -= VEGAN_NUTRITION;
                     data.delete(m.a);
                     data.lazy.remove(m.a);
                 }
             }
         }
     }
-    let delta = timer::delta(ctx);
-    let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
+    let delta = timer::duration_to_f64(timer::delta(ctx)) as f32;
     for a in left.clone() {
         if !data.has(a.component::<Velocity>()) || !data.has(a.component::<Position>()) {
             continue;
@@ -232,15 +239,15 @@ where
         let vel = data[a.component::<Velocity>()].velocity;
         let pos = &mut data[a.component::<Position>()].position;
         *pos += vel * delta;
-        if pos.x < -RADIUS {
-            pos.x += WIDTH + RADIUS;
-        } else if pos.x > WIDTH + RADIUS {
-            pos.x -= WIDTH + RADIUS;
+        if pos.x < -MAX_RADIUS {
+            pos.x += WIDTH + MAX_RADIUS;
+        } else if pos.x > WIDTH + MAX_RADIUS {
+            pos.x -= WIDTH + MAX_RADIUS;
         }
-        if pos.y < -RADIUS {
-            pos.y += HEIGHT + RADIUS;
-        } else if pos.y > HEIGHT + RADIUS {
-            pos.y -= HEIGHT + RADIUS;
+        if pos.y < -MAX_RADIUS {
+            pos.y += HEIGHT + MAX_RADIUS;
+        } else if pos.y > HEIGHT + MAX_RADIUS {
+            pos.y -= HEIGHT + MAX_RADIUS;
         }
     }
     Ok(())
@@ -255,6 +262,8 @@ where
         let this = e;
         let p1 = data[e.component::<Position>()].position;
         let d = data[e.component::<Direction>()].direction;
+        let mut has_desired = false;
+        let mut desired = vec![0.0; DIR_COUNT];
         let mut inputs = vec![1.0; RAY_COUNT * 2];
         for i in 0..RAY_COUNT {
             let f = i as f32 / (RAY_COUNT as f32 - 1.0);
@@ -269,9 +278,9 @@ where
                         if data.has(e.component::<Food>()) {
                             1.0
                         } else if data[e.component::<Creature>()].kind == Kind::Vegan {
-                            0.5
+                            0.7
                         } else {
-                            0.0
+                            -1.0
                         }
                     }
                     Kind::Carnivorous => {
@@ -280,14 +289,20 @@ where
                         } else if data[e.component::<Creature>()].kind == Kind::Vegan {
                             1.0
                         } else {
-                            0.5
+                            0.7
                         }
                     }
                 };
 
+                has_desired = true;
+                let j = i * (DIR_COUNT as f32 / RAY_COUNT as f32).round() as usize;
+                desired[j] = kind;
                 inputs[i * 2] = kind;
                 inputs[i * 2 + 1] = d / VIEW_DISTANCE;
             }
+        }
+        if has_desired {
+            data[e.component::<Desired>()].desired = DVector::from_vec(desired);
         }
         data[e.component::<Inputs>()].input = DVector::from_vec(inputs);
     }
@@ -310,7 +325,10 @@ where
         }
         let angle = (360.0 / DIR_COUNT as f32 * index as f32).to_radians();
         let (y, x) = angle.sin_cos();
-        let new_velocity = Velocity::new(x * SPEED, y * SPEED);
+        let new_velocity = match data[e.component::<Creature>()].kind {
+            Kind::Carnivorous => Velocity::new(x * CARNIVORE_SPEED, y * CARNIVORE_SPEED),
+            Kind::Vegan => Velocity::new(x * VEGAN_SPEED, y * VEGAN_SPEED),
+        };
         let new_direction = angle;
         data[e.component::<Velocity>()] = new_velocity;
         data[e.component::<Direction>()].direction = new_direction;
