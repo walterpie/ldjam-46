@@ -21,6 +21,7 @@ pub mod creature;
 pub mod data;
 pub mod draw;
 pub mod lazy;
+pub mod lstm;
 pub mod mutate;
 pub mod nn;
 
@@ -28,9 +29,11 @@ pub const DPI_FACTOR: f32 = 1.0 / 3.166;
 pub const WIDTH: f32 = 1280.0 * DPI_FACTOR;
 pub const HEIGHT: f32 = 720.0 * DPI_FACTOR;
 pub const RADIUS: f32 = 16.0;
-pub const SPEED: f32 = 32.0;
-pub const CREATURE_COUNT: usize = 20;
-pub const FOOD_COUNT: usize = 5;
+pub const SPEED: f32 = 100.0;
+pub const CREATURE_COUNT: usize = 40;
+pub const FOOD_COUNT: usize = 15;
+pub const FOOD_TIMEOUT: f32 = 8.0;
+pub const VEGAN_RATIO: f32 = 0.66;
 
 enum State {
     Game,
@@ -40,10 +43,11 @@ struct GameState {
     data: GameData,
     foods: Vec<Entity>,
     creatures: Vec<Entity>,
+    food_timeout: f32,
 }
 
 impl GameState {
-    pub fn new(ctx: &mut Context) -> GameResult<GameState> {
+    pub fn new(ctx: &mut Context) -> GameResult<Self> {
         let mut data = GameData::new();
         let mut foods = Vec::new();
         let mut creatures = Vec::new();
@@ -91,7 +95,7 @@ impl GameState {
                 data.insert(e, Draw::circle(ctx, radius, color)?);
                 data.insert(e, network);
                 data.insert(e, Inputs::new(RAY_COUNT * 2));
-                data.insert(e, Outputs::new(8));
+                data.insert(e, Outputs::new(DIR_COUNT));
                 creatures.push(e)
             }
         }
@@ -100,7 +104,7 @@ impl GameState {
             let e = data.add_entity();
             let radius = random::<f32>() * RADIUS * DPI_FACTOR;
             let color;
-            let kind = if random::<bool>() {
+            let kind = if random::<f32>() < VEGAN_RATIO {
                 color = Color::new(0.0, random::<f32>(), random::<f32>(), 1.0);
                 Kind::Vegan
             } else {
@@ -116,16 +120,17 @@ impl GameState {
             data.insert(e, Direction::new(0.0));
             data.insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
             data.insert(e, Draw::circle(ctx, radius, color)?);
-            data.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, 8]));
+            data.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, DIR_COUNT]));
             data.insert(e, Inputs::new(RAY_COUNT * 2));
-            data.insert(e, Outputs::new(8));
+            data.insert(e, Outputs::new(DIR_COUNT));
             creatures.push(e)
         }
 
-        Ok(GameState {
+        Ok(Self {
             data,
             foods,
             creatures,
+            food_timeout: 0.0,
         })
     }
 }
@@ -134,6 +139,25 @@ impl EventHandler for GameState {
     fn update(&mut self, ctx: &mut Context) -> GameResult<()> {
         let delta = timer::delta(ctx);
         let delta = delta.as_secs() as f32 + delta.subsec_nanos() as f32 / 1000000000.0;
+        self.food_timeout += delta;
+        if self.food_timeout > FOOD_TIMEOUT {
+            self.food_timeout -= FOOD_TIMEOUT;
+            for _ in 0..FOOD_COUNT {
+                let e = self.data.add_entity();
+                let radius = random::<f32>() * RADIUS * DPI_FACTOR;
+                let color = Color::new(random::<f32>(), random::<f32>(), random::<f32>(), 1.0);
+                self.data.insert(e, Food);
+                self.data.insert(
+                    e,
+                    Position::new(random::<f32>() * WIDTH, random::<f32>() * HEIGHT),
+                );
+                self.data.insert(e, Velocity::new(0.0, 0.0));
+                self.data
+                    .insert(e, Body::new(radius, random::<f32>(), random::<f32>()));
+                self.data.insert(e, Draw::circle(ctx, radius, color)?);
+                self.foods.push(e)
+            }
+        }
         for e in self.creatures.iter().copied() {
             self.data[e.component::<Creature>()].timeout -= delta;
             self.data[e.component::<Creature>()].life += delta;
@@ -175,7 +199,11 @@ impl EventHandler for GameState {
         }
         self.creatures.extend(add);
 
-        collision::input_system(&mut self.data, self.creatures.iter().copied())?;
+        collision::input_system(
+            &mut self.data,
+            self.creatures.iter().copied(),
+            self.creatures.iter().chain(&self.foods).copied(),
+        )?;
         nn::nn_system(&mut self.data, self.creatures.iter().copied())?;
         collision::output_system(&mut self.data, self.creatures.iter().copied())?;
 

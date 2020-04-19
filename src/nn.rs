@@ -4,13 +4,22 @@ use nalgebra::{DMatrix, DVector};
 
 use serde::{Deserialize, Serialize};
 
+use rand::prelude::*;
+use rand_distr::StandardNormal;
+
 use crate::data::{Entity, GameData};
 
-fn sigmoid(n: f32) -> f32 {
+pub fn softmax(x: DVector<f32>) -> DVector<f32> {
+    let max = x.max();
+    let e = x.map(|e| e - max).map(|f| f.exp());
+    &e * e.sum().recip()
+}
+
+pub fn sigmoid(n: f32) -> f32 {
     (1.0 + n.exp()).recip()
 }
 
-fn sigmoid_der(n: f32) -> f32 {
+pub fn sigmoid_der(n: f32) -> f32 {
     let sig = sigmoid(n);
     sig * (1.0 - sig)
 }
@@ -71,9 +80,18 @@ impl Network {
             .iter()
             .copied()
             .zip(layers[1..].iter().copied());
+        let mut rng = thread_rng();
         for (input, output) in iter {
-            weights.push(DMatrix::new_random(output, input));
-            biases.push(DVector::new_random(output));
+            let mut vec = Vec::with_capacity(output * input);
+            for _ in 0..output * input {
+                vec.push(rng.sample(StandardNormal));
+            }
+            weights.push(DMatrix::from_vec(output, input, vec));
+            let mut vec = Vec::with_capacity(output);
+            for _ in 0..output {
+                vec.push(rng.sample(StandardNormal));
+            }
+            biases.push(DVector::from_vec(vec));
         }
         Network { weights, biases }
     }

@@ -7,12 +7,14 @@ use nalgebra::{DVector, Vector2};
 
 use ordered_float::OrderedFloat;
 
+use rand::random;
+
 use crate::creature::*;
 use crate::data::{Entity, GameData, Has};
 use crate::nn::{Inputs, Outputs};
 use crate::{HEIGHT, RADIUS, SPEED, WIDTH};
 
-pub const VIEW_DISTANCE: f32 = 300.0;
+pub const VIEW_DISTANCE: f32 = 10000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
@@ -244,11 +246,13 @@ where
     Ok(())
 }
 
-pub fn input_system<I>(data: &mut GameData, entities: I) -> GameResult<()>
+pub fn input_system<I1, I2>(data: &mut GameData, creatures: I1, all: I2) -> GameResult<()>
 where
-    I: IntoIterator<Item = Entity> + Clone,
+    I1: IntoIterator<Item = Entity>,
+    I2: IntoIterator<Item = Entity> + Clone,
 {
-    for e in entities.clone() {
+    for e in creatures {
+        let this = e;
         let p1 = data[e.component::<Position>()].position;
         let d = data[e.component::<Direction>()].direction;
         let mut inputs = vec![1.0; RAY_COUNT * 2];
@@ -258,10 +262,30 @@ where
             let (y, x) = d.sin_cos();
             let p2 = Vector2::new(x, y) * VIEW_DISTANCE;
             let ray = Ray { p1, p2 };
-            let result = raycast(data, &ray, e, entities.clone());
+            let result = raycast(data, &ray, e, all.clone());
             if let Some((e, d)) = result {
-                let kind = data[e.component::<Creature>()].kind;
-                inputs[i * 2] = kind.as_f32();
+                let kind = match data[this.component::<Creature>()].kind {
+                    Kind::Vegan => {
+                        if data.has(e.component::<Food>()) {
+                            1.0
+                        } else if data[e.component::<Creature>()].kind == Kind::Vegan {
+                            0.5
+                        } else {
+                            0.0
+                        }
+                    }
+                    Kind::Carnivorous => {
+                        if data.has(e.component::<Food>()) {
+                            0.0
+                        } else if data[e.component::<Creature>()].kind == Kind::Vegan {
+                            1.0
+                        } else {
+                            0.5
+                        }
+                    }
+                };
+
+                inputs[i * 2] = kind;
                 inputs[i * 2 + 1] = d / VIEW_DISTANCE;
             }
         }
@@ -276,12 +300,15 @@ where
 {
     for e in entities {
         let output = &data[e.component::<Outputs>()].output;
-        let (index, _) = output
+        let (mut index, _) = output
             .iter()
             .enumerate()
             .max_by_key(|(_, x)| OrderedFloat::from(**x))
             .unwrap();
-        let angle = (360.0 / 8.0 * index as f32).to_radians();
+        if output.iter().all(|x| *x == 1.0) {
+            index = random::<usize>() % DIR_COUNT;
+        }
+        let angle = (360.0 / DIR_COUNT as f32 * index as f32).to_radians();
         let (y, x) = angle.sin_cos();
         let new_velocity = Velocity::new(x * SPEED, y * SPEED);
         let new_direction = angle;

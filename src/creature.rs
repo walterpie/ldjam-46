@@ -13,6 +13,7 @@ use crate::nn::{Inputs, Network, Outputs};
 pub const DEFAULT_TIMEOUT: f32 = 10.0;
 pub const FOV_2: f32 = 165.0;
 pub const RAY_COUNT: usize = 9;
+pub const DIR_COUNT: usize = 16;
 pub const STARVE: f32 = 15.0;
 pub const FOOD: f32 = 2.5;
 
@@ -25,15 +26,6 @@ pub enum Kind {
     Vegan,
     /// Corresponds to 1.0
     Carnivorous,
-}
-
-impl Kind {
-    pub fn as_f32(self) -> f32 {
-        match self {
-            Kind::Vegan => 0.0,
-            Kind::Carnivorous => 1.0,
-        }
-    }
 }
 
 /// Should be stored in an array of structs
@@ -145,9 +137,10 @@ pub fn mate(ctx: &mut Context, data: &mut GameData, a: Entity, b: Entity) -> Gam
     data.lazy.insert(e, Direction::new(0.0));
     data.lazy.insert(e, Body::new(radius, mass, restitution));
     data.lazy.insert(e, Draw::circle(ctx, radius, color)?);
-    data.lazy.insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, 8]));
+    data.lazy
+        .insert(e, Network::new(&[RAY_COUNT * 2, 6, 6, DIR_COUNT]));
     data.lazy.insert(e, Inputs::new(RAY_COUNT * 2));
-    data.lazy.insert(e, Outputs::new(8));
+    data.lazy.insert(e, Outputs::new(DIR_COUNT));
 
     Ok(())
 }

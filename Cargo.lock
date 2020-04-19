@@ -938,6 +938,7 @@ dependencies = [
  "nalgebra 0.21.0",
  "ordered-float",
  "rand 0.7.3",
+ "rand_distr",
  "serde",
 ]
 
